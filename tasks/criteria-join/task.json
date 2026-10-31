@@ -1,0 +1,14 @@
+{
+  "title": "Join and aggregate with the Criteria API",
+  "category": "criteria",
+  "checks": {
+    "forbidden": [
+      {"pattern": "\\bEntityql\\b", "reason": "deprecated Entityql (use QueryDsl)"},
+      {"pattern": "\\bNativeSql\\b", "reason": "deprecated NativeSql (use QueryDsl)"},
+      {"pattern": "@Sql\\b|@Select\\b", "reason": "SQL annotation instead of the Criteria API"}
+    ],
+    "required": [
+      {"pattern": "\\bQueryDsl\\b", "reason": "uses QueryDsl"}
+    ]
+  }
+}

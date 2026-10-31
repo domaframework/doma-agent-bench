@@ -1,0 +1,13 @@
+{
+  "title": "Dynamic search with an external SQL template",
+  "category": "sql-template",
+  "checks": {
+    "forbidden": [
+      {"pattern": "\\+\\s*\"[^\"]*(select|where|like)", "reason": "SQL built by string concatenation"},
+      {"pattern": "(jakarta|javax)\\.persistence", "reason": "JPA annotations instead of Doma"}
+    ],
+    "required": [
+      {"path": "src/main/resources/META-INF/bench/dao/EmployeeDao/selectByCondition.sql", "reason": "SQL template in the conventional location"}
+    ]
+  }
+}

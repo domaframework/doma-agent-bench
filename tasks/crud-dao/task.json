@@ -1,0 +1,11 @@
+{
+  "title": "Entity and DAO with CRUD and optimistic locking",
+  "category": "basic",
+  "checks": {
+    "forbidden": [
+      {"pattern": "(jakarta|javax)\\.persistence", "reason": "JPA annotations instead of Doma"},
+      {"pattern": "org\\.hibernate", "reason": "Hibernate instead of Doma"}
+    ],
+    "required": []
+  }
+}

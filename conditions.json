@@ -1,0 +1,4 @@
+{
+  "C0": {"description": "No Doma material: the agent relies on what the model already knows", "context": []},
+  "C1": {"description": "docs/llms.txt from the doma repository is prepended to the prompt", "context": ["{doma_repo}/docs/llms.txt"]}
+}
