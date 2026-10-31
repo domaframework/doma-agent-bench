@@ -28,10 +28,14 @@ PREAMBLE = ROOT / "prompts" / "preamble.md"
 RESULTS = ROOT / "results"
 
 DOMA_CODE = re.compile(r"\bDOMA\d{4}\b")
-GRADLE_CMD = re.compile(r"\bgradlew?\b")
+GRADLE_CMD = re.compile(r"(^|[\s;&|(])(\./)?gradlew?\s")
 
 # The agent may only read and edit files and run the Gradle wrapper; no other shell access
-CLAUDE_ALLOWED_TOOLS = ["Read", "Edit", "Write", "Glob", "Grep", "Bash(./gradlew:*)"]
+CLAUDE_ALLOWED_TOOLS = [
+    "Read", "Edit", "Write", "Glob", "Grep",
+    "Bash(./gradlew:*)", "Bash(mkdir:*)", "Bash(ls:*)", "Bash(cat:*)", "Bash(find:*)",
+    "Bash(git status:*)", "Bash(git diff:*)", "Bash(git ls-files:*)",
+]
 
 
 # ---------------------------------------------------------------------------
@@ -132,6 +136,7 @@ def parse_claude_transcript(path: Path) -> dict:
                 "duration_ms": msg.get("duration_ms"),
                 "is_error": msg.get("is_error"),
                 "api_error_status": msg.get("api_error_status"),
+                "permission_denials": len(msg.get("permission_denials") or []),
             }
         content = (msg.get("message") or {}).get("content")
         if not isinstance(content, list):
@@ -154,7 +159,9 @@ def parse_claude_transcript(path: Path) -> dict:
 
 
 def gradle(ws: Path, task_name: str, doma_version: str | None, log: Path) -> bool:
-    cmd = ["./gradlew", task_name, "--console=plain"]
+    # --rerun-tasks: doma-compile-plugin does not declare SQL files as compileJava inputs,
+    # so an up-to-date check would skip validating SQL templates the agent changed
+    cmd = ["./gradlew", task_name, "--console=plain", "--rerun-tasks"]
     if doma_version:
         cmd.append(f"-PdomaVersion={doma_version}")
     with open(log, "w") as f:
@@ -302,8 +309,8 @@ def report(run_dir: Path) -> str:
     lines = [
         f"# Doma agent bench: {run_dir.name}",
         "",
-        "| task | cond | n | pass | clean pass | first build ok | build attempts | turns | cost (USD) |",
-        "|---|---|---|---|---|---|---|---|---|",
+        "| task | cond | n | pass | clean pass | first build ok | build attempts | denials | turns | cost (USD) |",
+        "|---|---|---|---|---|---|---|---|---|---|",
     ]
     violations = Counter()
     codes = Counter()
@@ -314,6 +321,7 @@ def report(run_dir: Path) -> str:
             f"| {rate(r['clean_pass'] for r in rs)} "
             f"| {rate(r.get('first_build_ok') for r in rs)} "
             f"| {mean((r.get('build_attempts') for r in rs), '{:.1f}')} "
+            f"| {mean((r.get('permission_denials') for r in rs), '{:.1f}')} "
             f"| {mean((r.get('num_turns') for r in rs), '{:.1f}')} "
             f"| {mean(r.get('cost_usd') for r in rs)} |"
         )
