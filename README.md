@@ -157,6 +157,39 @@ an unquoted `/*%expand e*/` alias that compiled but failed at runtime.
 | [domaframework/doma#1715]: validate the alias expression of `/*%expand*/` | compile-time validation |
 | [domaframework/doma#1716]: support primitive arrays in IN lists and `/*%for*/` (found by auditing runtime against compile-time handling) | runtime |
 
+### Doma before and after these changes
+
+All five tasks, measured again after the changes were merged:
+
+- before: Doma 3.14.1 with doma-compile-plugin 4.0.3
+- after: Doma master (3.14.2-SNAPSHOT, including #1714 to #1716) with doma-compile-plugin 4.0.4
+
+Both use the `llms.txt` with essentials for C1, and both tell Claude which shell commands
+the sandbox allows, so fewer agents give up on building. Runs that passed:
+
+| task | C0 before | C0 after | C1 before | C1 after |
+|---|---|---|---|---|
+| crud-dao | 4/5 | 5/5 | 5/5 | 5/5 |
+| criteria-join | 5/5 | 5/5 | 5/5 | 5/5 |
+| dynamic-sql | 1/5 | 0/5 | 5/5 | 5/5 |
+| batch-dao | 5/5 | 5/5 | 5/5 | 5/5 |
+| fix-errors | 3/5 | 5/5 | 4/5 | 5/5 |
+| **total** | 18/25 | 20/25 | 24/25 | 25/25 |
+
+What the transcripts show:
+
+- **fix-errors**: with the new alias validation ([domaframework/doma#1715]), three agents
+  that wrote `/*%expand e*/` got `DOMA4092` at compile time and fixed it. Before, one
+  agent shipped the same alias, and it failed at runtime. Two other failures before left
+  an unaliased `/*%expand*/` in a join, which no check catches; that all five C0 runs
+  quoted the alias afterwards is likely chance.
+- **batch-dao**: once agents kept building, they fixed the missing `sqlFile = true` with or
+  without the new `DOMA4501` hint (seen 3 times before, 4 times after). The better message
+  made no measurable difference here.
+- **Remaining failures are all silent or runtime-only**: `escape '\'` with `@prefix` in
+  dynamic-sql C0 (4 runs before, 5 after; C1 avoids it through `llms.txt`), and an entity
+  without `naming = NamingType.SNAKE_LOWER_CASE` in crud-dao C0 (1 run before).
+
 [domaframework/doma-compile-plugin#219]: https://github.com/domaframework/doma-compile-plugin/pull/219
 [domaframework/doma#1713]: https://github.com/domaframework/doma/pull/1713
 [domaframework/doma#1714]: https://github.com/domaframework/doma/pull/1714
