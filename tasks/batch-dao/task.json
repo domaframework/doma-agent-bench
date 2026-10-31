@@ -1,0 +1,13 @@
+{
+  "title": "Batch insert, batch update and a SQL-file update",
+  "category": "batch",
+  "checks": {
+    "forbidden": [
+      {"pattern": "(jakarta|javax)\\.persistence", "reason": "JPA annotations instead of Doma"},
+      {"pattern": "for\\s*\\([^)]*:\\s*employees\\s*\\)", "reason": "loop over single-row statements instead of a batch"}
+    ],
+    "required": [
+      {"path": "src/main/resources/META-INF/bench/dao/EmployeeDao/raiseSalaryByDepartment.sql", "reason": "SQL template in the conventional location"}
+    ]
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "title": "Fix a DAO that fails to compile",
+  "category": "fix-errors",
+  "checks": {
+    "forbidden": [
+      {"pattern": "(jakarta|javax)\\.persistence", "reason": "JPA annotations instead of Doma"}
+    ],
+    "required": [
+      {"path": "src/main/resources/META-INF/bench/dao/EmployeeDao/selectBySalaryRange.sql", "reason": "SQL template in the conventional location"}
+    ]
+  }
+}
