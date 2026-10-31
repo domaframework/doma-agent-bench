@@ -1,6 +1,6 @@
 plugins {
     java
-    id("org.domaframework.doma.compile") version "4.0.3"
+    id("org.domaframework.doma.compile")
 }
 
 repositories {

@@ -30,6 +30,14 @@ RESULTS = ROOT / "results"
 DOMA_CODE = re.compile(r"\bDOMA\d{4}\b")
 GRADLE_CMD = re.compile(r"(^|[\s;&|(])(\./)?gradlew?\s")
 
+CLAUDE_SANDBOX_NOTE = (
+    "In this environment the Bash tool runs only these commands: ./gradlew, mkdir, ls, cat, find, "
+    "git status, git diff and git ls-files. Run each one as a separate command: a command line that "
+    "chains commands with && or ;, or that writes files with a heredoc, is rejected as a whole. "
+    "Create and edit files with the file tools. If a command is rejected, split it up and try again; "
+    "the shell itself is still available."
+)
+
 # The agent may only read and edit files and run the Gradle wrapper; no other shell access
 CLAUDE_ALLOWED_TOOLS = [
     "Read", "Edit", "Write", "Glob", "Grep",
@@ -53,11 +61,18 @@ def git(ws: Path, *args: str) -> str:
     ).stdout
 
 
-def prepare_workspace(task: Path) -> Path:
+def prepare_workspace(task: Path, args) -> Path:
     # A fresh temp directory outside the bench repo, so the agent cannot see hidden tests
     ws = Path(tempfile.mkdtemp(prefix="doma-bench-")) / "app"
     copy_tree(TEMPLATE, ws)
     copy_tree(task / "workspace", ws)
+    # Write the versions into the workspace, so that the agent's own builds use them too
+    properties = ws / "gradle.properties"
+    text = properties.read_text()
+    for key, value in (("domaVersion", args.doma_version), ("domaCompileVersion", args.doma_compile_version)):
+        if value:
+            text = re.sub(rf"^{key}=.*$", f"{key}={value}", text, flags=re.M)
+    properties.write_text(text)
     git(ws, "init", "-q")
     git(ws, "add", "-A")
     git(ws, "-c", "user.name=bench", "-c", "user.email=bench@localhost",
@@ -100,6 +115,7 @@ def run_agent(args, task: Path, ws: Path, prompt: str, out: Path) -> dict:
             cmd += ["--max-turns", str(args.max_turns)]
         if args.bare:
             cmd += ["--bare"]
+        cmd += ["--append-system-prompt", CLAUDE_SANDBOX_NOTE]
         transcript = out / "transcript.jsonl"
     else:  # command
         prompt_file = out / "prompt.md"
@@ -160,12 +176,10 @@ def parse_claude_transcript(path: Path) -> dict:
 # grading
 
 
-def gradle(ws: Path, task_name: str, doma_version: str | None, log: Path) -> bool:
+def gradle(ws: Path, task_name: str, log: Path) -> bool:
     # --rerun-tasks: doma-compile-plugin does not declare SQL files as compileJava inputs,
     # so an up-to-date check would skip validating SQL templates the agent changed
     cmd = ["./gradlew", task_name, "--console=plain", "--rerun-tasks"]
-    if doma_version:
-        cmd.append(f"-PdomaVersion={doma_version}")
     with open(log, "w") as f:
         proc = subprocess.run(cmd, cwd=ws, stdout=f, stderr=subprocess.STDOUT, timeout=900)
     return proc.returncode == 0
@@ -213,7 +227,7 @@ def grade(args, task: Path, ws: Path, out: Path) -> dict:
     (out / "changes.patch").write_text(git(ws, "diff", "--cached", "HEAD"))
 
     result = {"violations": run_checks(task, ws)}
-    result["compile_ok"] = gradle(ws, "compileJava", args.doma_version, out / "compile.log")
+    result["compile_ok"] = gradle(ws, "compileJava", out / "compile.log")
 
     # Replace whatever tests the agent wrote with the hidden acceptance tests
     shutil.rmtree(ws / "src" / "test", ignore_errors=True)
@@ -221,7 +235,7 @@ def grade(args, task: Path, ws: Path, out: Path) -> dict:
     copy_tree(task / "hidden-tests", ws / "src" / "test")
 
     if result["compile_ok"]:
-        gradle(ws, "test", args.doma_version, out / "test.log")
+        gradle(ws, "test", out / "test.log")
         result.update(parse_junit(ws))
         result["test_compile_ok"] = result["tests_total"] > 0
     else:
@@ -255,7 +269,7 @@ def cmd_validate(args) -> int:
     unexpected = []
     for task in select_tasks(args):
         for label, use_reference in (("reference", True), ("no-op", False)):
-            ws = prepare_workspace(task)
+            ws = prepare_workspace(task, args)
             out = Path(tempfile.mkdtemp(prefix="doma-bench-validate-"))
             try:
                 if use_reference:
@@ -279,6 +293,8 @@ def cmd_run(args) -> None:
     conditions = json.loads(CONDITIONS_FILE.read_text())
     tasks = select_tasks(args)
     run_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{args.agent}"
+    if args.label:
+        run_id += f"-{args.label}"
     run_dir = RESULTS / run_id
     run_dir.mkdir(parents=True)
     (run_dir / "run.json").write_text(json.dumps(vars(args), indent=2, default=str))
@@ -290,12 +306,13 @@ def cmd_run(args) -> None:
                 out.mkdir(parents=True)
                 print(f"[{task.name} {cond} #{i}] ", end="", flush=True)
 
-                ws = prepare_workspace(task)
+                ws = prepare_workspace(task, args)
                 prompt = build_prompt(task, conditions[cond]["context"], Path(args.doma_repo))
                 (out / "prompt.md").write_text(prompt)
 
                 result = {"task": task.name, "condition": cond, "repeat": i, "agent": args.agent,
-                          "model": args.model, "doma_version": args.doma_version}
+                          "model": args.model, "doma_version": args.doma_version,
+                          "doma_compile_version": args.doma_compile_version}
                 result.update(run_agent(args, task, ws, prompt, out))
                 result.update(parse_claude_transcript(out / "transcript.jsonl"))
                 if result.get("api_error_status"):
@@ -391,6 +408,8 @@ def main() -> int | None:
     run.add_argument("--conditions", default="C0")
     run.add_argument("--repeat", type=int, default=1)
     run.add_argument("--doma-version", help="Doma version to build against (default: template/gradle.properties)")
+    run.add_argument("--doma-compile-version", help="doma-compile-plugin version (default: template/gradle.properties)")
+    run.add_argument("--label", help="suffix for the run directory name, to tell parallel runs apart")
     run.add_argument("--doma-repo", default=str(ROOT.parent / "doma"), help="path to the doma repository for context files")
     run.add_argument("--timeout", type=int, default=1800, help="agent timeout in seconds")
     run.add_argument("--max-turns", type=int)
@@ -403,6 +422,7 @@ def main() -> int | None:
     val = sub.add_parser("validate", help="check each task with its reference solution and with no changes")
     val.add_argument("--tasks", help="comma-separated task names (default: all)")
     val.add_argument("--doma-version", help="Doma version to build against (default: template/gradle.properties)")
+    val.add_argument("--doma-compile-version", help="doma-compile-plugin version (default: template/gradle.properties)")
 
     args = parser.parse_args()
     if args.command == "run":
