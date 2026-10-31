@@ -131,6 +131,7 @@ def parse_claude_transcript(path: Path) -> dict:
                 "cost_usd": msg.get("total_cost_usd"),
                 "duration_ms": msg.get("duration_ms"),
                 "is_error": msg.get("is_error"),
+                "api_error_status": msg.get("api_error_status"),
             }
         content = (msg.get("message") or {}).get("content")
         if not isinstance(content, list):
@@ -259,6 +260,12 @@ def cmd_run(args) -> None:
                           "model": args.model, "doma_version": args.doma_version}
                 result.update(run_agent(args, task, ws, prompt, out))
                 result.update(parse_claude_transcript(out / "transcript.jsonl"))
+                if result.get("api_error_status"):
+                    # Authentication, quota or API outages say nothing about the model or Doma
+                    result["infra_error"] = True
+                    (out / "result.json").write_text(json.dumps(result, indent=2))
+                    shutil.rmtree(ws.parent, ignore_errors=True)
+                    sys.exit(f"API error {result['api_error_status']}; see {out / 'transcript.jsonl'}")
                 result.update(grade(args, task, ws, out))
                 (out / "result.json").write_text(json.dumps(result, indent=2))
 
@@ -288,6 +295,8 @@ def report(run_dir: Path) -> str:
     groups = defaultdict(list)
     for path in sorted(run_dir.rglob("result.json")):
         r = json.loads(path.read_text())
+        if r.get("infra_error"):
+            continue
         groups[(r["task"], r["condition"])].append(r)
 
     lines = [
