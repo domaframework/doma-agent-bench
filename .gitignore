@@ -1,4 +1,4 @@
 results/
 .gradle/
 build/
-__pycache__/
+.claude/

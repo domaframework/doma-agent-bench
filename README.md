@@ -9,7 +9,7 @@ or agent-facing material such as `llms.txt`, skills and MCP servers.
 
 ## How it works
 
-For each task × condition × repetition, `bench.py`:
+For each task × condition × repetition, the runner:
 
 1. Builds a fresh workspace in a temp directory: `template/` plus the task's `workspace/` overlay.
 2. Gives the agent the task prompt, optionally with reference material (the *condition*).
@@ -24,7 +24,7 @@ For each task × condition × repetition, `bench.py`:
 ## Layout
 
 ```
-bench.py              runner, grader and report
+src/main/java/        runner, grader and report (Java, built with Gradle)
 conditions.json       context given to the agent (C0: nothing, C1: docs/llms.txt, ...)
 prompts/preamble.md   text prepended to every task prompt
 template/             Gradle project shared by all tasks (Doma version in gradle.properties)
@@ -39,37 +39,43 @@ tasks/<name>/
 
 ## Usage
 
+Requirements: JDK 17 or later and git. Running Claude Code also needs the `claude` CLI.
+The runner is a Java application; `./gradlew run` builds and starts it from the repository root.
+
 Validate the tasks: each one must pass with its reference solution and fail when
 nothing is changed. No LLM is called, and CI runs this on every push:
 
 ```bash
-python3 bench.py validate
+./gradlew -q run --args="validate"
 ```
 
 Run Claude Code:
 
 ```bash
-python3 bench.py run --agent claude --model claude-sonnet-5-5 --conditions C0,C1 --repeat 5
+./gradlew -q run --args="run --agent claude --model claude-sonnet-5-5 --conditions C0,C1 --repeat 5"
 ```
 
 Run any other agent CLI. `{prompt_file}` and `{workspace}` are substituted, and the
 prompt is also passed on stdin:
 
 ```bash
-python3 bench.py run --agent command --agent-command 'my-agent --prompt-file {prompt_file}'
+./gradlew -q run --args="run --agent command --agent-command 'my-agent --prompt-file {prompt_file}'"
 ```
 
-Measure an unreleased Doma build:
+Measure a specific Doma or doma-compile-plugin version, including an unreleased build.
+The versions are written into each workspace, so the agent's own builds use them too:
 
 ```bash
-(cd ../doma && ./gradlew publishToMavenLocal)
-python3 bench.py run --agent claude --doma-version 3.14.2-SNAPSHOT
+(cd ../doma && ./gradlew :doma-core:publishToMavenLocal :doma-processor:publishToMavenLocal --no-configuration-cache)
+./gradlew -q run --args="run --agent claude --doma-version 3.14.2-SNAPSHOT --doma-compile-version 4.0.4"
 ```
+
+Run `./gradlew -q run` without arguments to list every option.
 
 Regenerate a report:
 
 ```bash
-python3 bench.py report results/<run-id>
+./gradlew -q run --args="report results/<run-id>"
 ```
 
 ## Agent sandboxing
@@ -105,7 +111,7 @@ Known limitations of this prototype:
 
 1. Create `tasks/<name>/` with `task.json`, `prompt.md`, `hidden-tests/` and `reference/`.
 2. Fix public names and signatures in the prompt, since the hidden tests depend on them.
-3. Run `python3 bench.py validate --tasks <name>`.
+3. Run `./gradlew -q run --args="validate --tasks <name>"`.
 
 Keep a private, held-out set of tasks as well. Public tasks will eventually leak into training data.
 
