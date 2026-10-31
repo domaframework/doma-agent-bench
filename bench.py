@@ -244,11 +244,40 @@ def grade(args, task: Path, ws: Path, out: Path) -> dict:
 # commands
 
 
-def cmd_run(args) -> None:
-    conditions = json.loads(CONDITIONS_FILE.read_text())
-    tasks = [TASKS / t for t in args.tasks.split(",")] if args.tasks else sorted(
+def select_tasks(args) -> list[Path]:
+    return [TASKS / t for t in args.tasks.split(",")] if args.tasks else sorted(
         p for p in TASKS.iterdir() if (p / "task.json").exists()
     )
+
+
+def cmd_validate(args) -> int:
+    """Checks that every task passes with its reference solution and fails when nothing is done."""
+    unexpected = []
+    for task in select_tasks(args):
+        for label, use_reference in (("reference", True), ("no-op", False)):
+            ws = prepare_workspace(task)
+            out = Path(tempfile.mkdtemp(prefix="doma-bench-validate-"))
+            try:
+                if use_reference:
+                    copy_tree(task / "reference", ws)
+                result = grade(args, task, ws, out)
+            finally:
+                shutil.rmtree(ws.parent, ignore_errors=True)
+                shutil.rmtree(out, ignore_errors=True)
+            # The reference must also satisfy the static checks; doing nothing must fail
+            ok = result["clean_pass"] if use_reference else not result["passed"]
+            print(f"[{task.name} {label}] {'ok' if ok else 'UNEXPECTED'}", flush=True)
+            if not ok:
+                unexpected.append(f"{task.name} {label}")
+    if unexpected:
+        print("Unexpected results: " + ", ".join(unexpected))
+        return 1
+    return 0
+
+
+def cmd_run(args) -> None:
+    conditions = json.loads(CONDITIONS_FILE.read_text())
+    tasks = select_tasks(args)
     run_id = datetime.datetime.now().strftime("%Y%m%d-%H%M%S") + f"-{args.agent}"
     run_dir = RESULTS / run_id
     run_dir.mkdir(parents=True)
@@ -350,7 +379,7 @@ def report(run_dir: Path) -> str:
     return text
 
 
-def main() -> None:
+def main() -> int | None:
     parser = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = parser.add_subparsers(dest="command", required=True)
 
@@ -371,11 +400,17 @@ def main() -> None:
     rep = sub.add_parser("report", help="regenerate the report for a run")
     rep.add_argument("run_dir")
 
+    val = sub.add_parser("validate", help="check each task with its reference solution and with no changes")
+    val.add_argument("--tasks", help="comma-separated task names (default: all)")
+    val.add_argument("--doma-version", help="Doma version to build against (default: template/gradle.properties)")
+
     args = parser.parse_args()
     if args.command == "run":
         if args.agent == "command" and not args.agent_command:
             parser.error("--agent command requires --agent-command")
         cmd_run(args)
+    elif args.command == "validate":
+        return cmd_validate(args)
     else:
         print(report(Path(args.run_dir)))
 

@@ -39,10 +39,11 @@ tasks/<name>/
 
 ## Usage
 
-Validate the tasks with the reference solutions (no LLM calls):
+Validate the tasks: each one must pass with its reference solution and fail when
+nothing is changed. No LLM is called, and CI runs this on every push:
 
 ```bash
-python3 bench.py run --agent reference --conditions C0,C1
+python3 bench.py validate
 ```
 
 Run Claude Code:
@@ -74,10 +75,16 @@ python3 bench.py report results/<run-id>
 ## Agent sandboxing
 
 The Claude agent runs with `--permission-mode dontAsk` and an explicit tool
-allowlist: `Read`, `Edit`, `Write`, `Glob`, `Grep` and `Bash(./gradlew:*)`.
+allowlist: `Read`, `Edit`, `Write`, `Glob`, `Grep`, and Bash limited to `./gradlew`,
+`mkdir`, `ls`, `cat`, `find`, `git status`, `git diff` and `git ls-files`.
 It cannot run any other shell command.
 
 Known limitations of this prototype:
+
+- A compound command (for example `mkdir ... && cat > ... && ./gradlew build`) is denied
+  as a whole. Some agents then conclude that the shell is unavailable and finish without
+  building, which turns fixable mistakes into failures. The `denials` and
+  `build attempts` columns show when this happens.
 
 - File tools accept absolute paths, so an agent could in principle read the hidden
   tests in this repository. Running each workspace in a container would close this.
@@ -98,7 +105,58 @@ Known limitations of this prototype:
 
 1. Create `tasks/<name>/` with `task.json`, `prompt.md`, `hidden-tests/` and `reference/`.
 2. Fix public names and signatures in the prompt, since the hidden tests depend on them.
-3. Run `python3 bench.py run --agent reference --tasks <name>` and make sure it passes.
-4. Run `python3 bench.py run --agent command --agent-command true --tasks <name>` and make sure it fails.
+3. Run `python3 bench.py validate --tasks <name>`.
 
 Keep a private, held-out set of tasks as well. Public tasks will eventually leak into training data.
+
+## Results so far
+
+Claude Sonnet 5.5, 5 runs per cell, Doma 3.14.1. C0 gives the agent no Doma material;
+C1 prepends `docs/llms.txt` to the prompt (the agent cannot follow its links).
+
+### `llms.txt` with links only vs. with essentials
+
+Runs that passed the hidden tests **and** the static checks:
+
+| task | C0 | C1, links only | C1, with essentials ([domaframework/doma#1713]) |
+|---|---|---|---|
+| crud-dao | 5/5 | 5/5 | 5/5 |
+| criteria-join | 2/5 | 1/5 | 5/5 |
+| dynamic-sql | 0/5 | 1/5 | 5/5 |
+| **total** | 7/15 | 7/15 | 15/15 |
+
+The essentials were written from the failures in these three tasks, so this table
+overstates how far they generalize. Typical failures before the change: an invented
+`/*%where*/` directive, `escape '\'` with `@prefix` (which escapes with `$`), and the
+deprecated `NativeSql`/`Entityql` APIs.
+
+### Tasks written after the change
+
+| task | C0 | C1, with essentials |
+|---|---|---|
+| batch-dao | 4/5 | 4/5 |
+| fix-errors | 5/5 | 4/5 |
+
+The essentials did not help on tasks they were not derived from. The failures pointed
+at Doma itself instead: a `DOMA4002` message without a hint toward `sqlFile = true`, and
+an unquoted `/*%expand e*/` alias that compiled but failed at runtime.
+
+### Changes to Doma that came out of this
+
+| change | layer |
+|---|---|
+| [domaframework/doma-compile-plugin#219]: declare SQL files as `compileJava` inputs, so editing only a SQL file is validated | compile-time validation |
+| [domaframework/doma#1713]: essentials for writing Doma code in `llms.txt` | documentation |
+| [domaframework/doma#1714]: `DOMA4501` says to use `sqlFile = true` or `@Sql` | error message |
+| [domaframework/doma#1715]: validate the alias expression of `/*%expand*/` | compile-time validation |
+| [domaframework/doma#1716]: support primitive arrays in IN lists and `/*%for*/` (found by auditing runtime against compile-time handling) | runtime |
+
+[domaframework/doma-compile-plugin#219]: https://github.com/domaframework/doma-compile-plugin/pull/219
+[domaframework/doma#1713]: https://github.com/domaframework/doma/pull/1713
+[domaframework/doma#1714]: https://github.com/domaframework/doma/pull/1714
+[domaframework/doma#1715]: https://github.com/domaframework/doma/pull/1715
+[domaframework/doma#1716]: https://github.com/domaframework/doma/pull/1716
+
+## License
+
+[Apache License 2.0](LICENSE), the same as Doma.
