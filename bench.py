@@ -148,6 +148,8 @@ def parse_claude_transcript(path: Path) -> dict:
                     builds[block.get("id")] = command
             elif block.get("type") == "tool_result" and block.get("tool_use_id") in builds:
                 text = json.dumps(block.get("content"))
+                if "Permission to use Bash has been denied" in text:
+                    continue  # never ran, so it says nothing about the build
                 outcomes.append("BUILD SUCCESSFUL" in text and not block.get("is_error"))
     metrics["build_attempts"] = len(outcomes)
     metrics["first_build_ok"] = outcomes[0] if outcomes else None
@@ -302,6 +304,8 @@ def report(run_dir: Path) -> str:
     groups = defaultdict(list)
     for path in sorted(run_dir.rglob("result.json")):
         r = json.loads(path.read_text())
+        # Re-derive agent metrics so older runs are reported with the current parser
+        r.update(parse_claude_transcript(path.parent / "transcript.jsonl"))
         if r.get("infra_error"):
             continue
         groups[(r["task"], r["condition"])].append(r)
