@@ -14,7 +14,7 @@ dependencies {
     implementation("org.seasar.doma:doma-core:$domaVersion")
     annotationProcessor("org.seasar.doma:doma-processor:$domaVersion")
     runtimeOnly("com.h2database:h2:2.5.252")
-    testImplementation(platform("org.junit:junit-bom:5.13.4"))
+    testImplementation(platform("org.junit:junit-bom:5.14.4"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")
     testRuntimeOnly("com.h2database:h2:2.5.252")
