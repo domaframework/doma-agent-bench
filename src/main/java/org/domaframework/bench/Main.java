@@ -107,8 +107,9 @@ public final class Main {
           result.put("repeat", i);
           result.put("agent", o.agent);
           result.put("model", o.model);
-          result.put("doma_version", o.domaVersion);
-          result.put("doma_compile_version", o.domaCompileVersion);
+          // The versions the workspace actually used, also when they come from the template
+          result.put("doma_version", Workspace.property(ws, "domaVersion"));
+          result.put("doma_compile_version", Workspace.property(ws, "domaCompileVersion"));
           result.putAll(Agent.run(o, task, ws, prompt, out));
           result.putAll(Transcript.parse(out.resolve("transcript.jsonl")));
           if (result.get("api_error_status") != null) {

@@ -47,6 +47,14 @@ final class Workspace {
         .replaceAll(Matcher.quoteReplacement(key + "=" + value));
   }
 
+  /** Returns the value of a property in the workspace's gradle.properties, or null if absent. */
+  static String property(Path ws, String key) {
+    Matcher matcher =
+        Pattern.compile("^" + key + "=(.*)$", Pattern.MULTILINE)
+            .matcher(Shell.read(ws.resolve("gradle.properties")));
+    return matcher.find() ? matcher.group(1).trim() : null;
+  }
+
   static String buildPrompt(Path task, List<String> contextFiles, Path domaRepo) {
     List<String> parts = new ArrayList<>();
     for (String file : contextFiles) {

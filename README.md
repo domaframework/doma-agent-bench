@@ -107,6 +107,17 @@ Known limitations of this prototype:
 | build attempts | number of Gradle runs by the agent |
 | DOMA codes | Doma processor errors the agent ran into; codes that recur without being fixed point to error messages worth improving |
 
+## Maintenance
+
+[Renovate](renovate.json) keeps the Doma and doma-compile-plugin versions in
+`template/gradle.properties` up to date, together with the other dependencies.
+CI runs `validate` on each update, so a pull request fails when a new Doma release
+breaks a reference solution. Minor and patch updates merge automatically when CI passes.
+
+Because the default versions change over time, each `result.json` records the Doma and
+doma-compile-plugin versions that the workspace actually used. Compare runs by these
+fields, not by date.
+
 ## Adding a task
 
 1. Create `tasks/<name>/` with `task.json`, `prompt.md`, `hidden-tests/` and `reference/`.
