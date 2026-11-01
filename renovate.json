@@ -2,24 +2,5 @@
   "$schema": "https://docs.renovatebot.com/renovate-schema.json",
   "extends": [
     "github>domaframework/renovate-config"
-  ],
-  "customManagers": [
-    {
-      "description": "Doma version that the tasks are measured against",
-      "customType": "regex",
-      "managerFilePatterns": ["/^template/gradle\\.properties$/"],
-      "matchStrings": ["domaVersion=(?<currentValue>\\S+)"],
-      "depNameTemplate": "org.seasar.doma:doma-core",
-      "datasourceTemplate": "maven"
-    },
-    {
-      "description": "doma-compile-plugin version that the tasks are measured against",
-      "customType": "regex",
-      "managerFilePatterns": ["/^template/gradle\\.properties$/"],
-      "matchStrings": ["domaCompileVersion=(?<currentValue>\\S+)"],
-      "depNameTemplate": "org.domaframework.doma.compile:org.domaframework.doma.compile.gradle.plugin",
-      "datasourceTemplate": "maven",
-      "registryUrlTemplate": "https://plugins.gradle.org/m2/"
-    }
   ]
 }
